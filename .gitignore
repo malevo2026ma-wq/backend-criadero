@@ -1,0 +1,7 @@
+node_modules
+.env
+dist
+npm-debug.log*
+
+# Scripts SQL (mantener localmente; ver database/README.md)
+database/**/*.sql
