@@ -43,8 +43,8 @@ function parseMysqlUrl(raw) {
       database: decodeURIComponent(u.pathname.replace(/^\//, '') || 'railway'),
       sslEnabled:
         u.searchParams.get('ssl') === 'true' ||
-        u.hostname.includes('railway') ||
-        u.hostname.includes('rlwy.net'),
+        u.hostname.includes('rlwy.net') ||
+        u.hostname.includes('proxy.rlwy.net'),
     }
   } catch {
     return null

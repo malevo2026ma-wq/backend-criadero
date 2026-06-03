@@ -14,6 +14,37 @@ function logError(message) {
   console.error(`${LOG_PREFIX} ${message}`)
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+async function pingDatabaseWithRetry(maxAttempts = 6, delayMs = 2000) {
+  let lastError
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await pingDatabase()
+      return
+    } catch (error) {
+      lastError = error
+      const retryable =
+        error?.code === 'ENOTFOUND' ||
+        error?.code === 'EAI_AGAIN' ||
+        error?.code === 'ETIMEDOUT' ||
+        error?.code === 'ECONNREFUSED'
+      if (!retryable || attempt === maxAttempts) {
+        throw error
+      }
+      logInfo(
+        `MySQL no disponible aún (${error.code || 'error'}). Reintento ${attempt}/${maxAttempts - 1} en ${delayMs / 1000}s…`,
+      )
+      await sleep(delayMs)
+    }
+  }
+  throw lastError
+}
+
 async function start() {
   logInfo('Iniciando aplicación…')
 
@@ -21,7 +52,7 @@ async function start() {
     logInfo(
       `Comprobando conexión a MySQL (${env.db.host}:${env.db.port}, base "${env.db.database}")…`,
     )
-    await pingDatabase()
+    await pingDatabaseWithRetry()
     logInfo('MySQL: conexión correcta. El pool está listo para consultas.')
   } catch (error) {
     logError('MySQL: no fue posible conectar o consultar la base de datos.')
