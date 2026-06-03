@@ -5,10 +5,6 @@ const {
   isInternalRailwayHost,
 } = require('./mysqlProfiles')
 
-if (typeof dns.setDefaultResultOrder === 'function') {
-  dns.setDefaultResultOrder('ipv6first')
-}
-
 let pool = null
 let activeProfileId = null
 
