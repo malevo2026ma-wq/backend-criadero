@@ -1,5 +1,5 @@
 const express = require('express')
-const { pingDatabase } = require('../config/db')
+const { pingDatabase, getActiveConnectionInfo } = require('../config/db')
 const authRoutes = require('./authRoutes')
 const sowRoutes = require('./sowRoutes')
 const adminRoutes = require('./adminRoutes')
@@ -16,10 +16,12 @@ const router = express.Router()
 router.get('/health', async (_req, res) => {
   try {
     await pingDatabase()
+    const { profileId } = getActiveConnectionInfo()
     return res.status(200).json({
       success: true,
       message: 'Backend funcionando correctamente.',
       db: 'ok',
+      mysqlProfile: profileId || undefined,
     })
   } catch {
     return res.status(503).json({

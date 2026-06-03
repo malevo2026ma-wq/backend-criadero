@@ -1,7 +1,3 @@
-const { app } = require('./app')
-const { env } = require('./config/env')
-const { pingDatabase } = require('./config/db')
-
 const LOG_PREFIX = '[Cabaña El Simbol · API]'
 
 function logInfo(message) {
@@ -20,11 +16,28 @@ function sleep(ms) {
   })
 }
 
-async function pingDatabaseWithRetry(maxAttempts = 6, delayMs = 2000) {
+async function connectDatabase() {
+  const { initDatabase, getActiveConnectionInfo } = require('./config/db')
+  const { env } = require('./config/env')
+  const { buildMysqlProfiles } = require('./config/mysqlProfiles')
+
+  const profiles = buildMysqlProfiles()
+  logInfo(
+    `Perfiles MySQL a probar: ${profiles.map((p) => p.id).join(' → ') || '(ninguno)'}`,
+  )
+  logInfo(
+    `Objetivo principal: ${env.db.host}:${env.db.port}, base "${env.db.database}"`,
+  )
+
   let lastError
+  const maxAttempts = 8
+  const delayMs = 2500
+
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      await pingDatabase()
+      await initDatabase()
+      const info = getActiveConnectionInfo()
+      logInfo(`MySQL conectado (perfil: ${info.profileId}). Pool listo.`)
       return
     } catch (error) {
       lastError = error
@@ -32,16 +45,19 @@ async function pingDatabaseWithRetry(maxAttempts = 6, delayMs = 2000) {
         error?.code === 'ENOTFOUND' ||
         error?.code === 'EAI_AGAIN' ||
         error?.code === 'ETIMEDOUT' ||
-        error?.code === 'ECONNREFUSED'
+        error?.code === 'ECONNREFUSED' ||
+        String(error?.message || '').includes('Intentos:')
+
       if (!retryable || attempt === maxAttempts) {
         throw error
       }
       logInfo(
-        `MySQL no disponible aún (${error.code || 'error'}). Reintento ${attempt}/${maxAttempts - 1} en ${delayMs / 1000}s…`,
+        `MySQL aún no disponible. Reintento global ${attempt}/${maxAttempts - 1} en ${delayMs / 1000}s…`,
       )
       await sleep(delayMs)
     }
   }
+
   throw lastError
 }
 
@@ -49,22 +65,19 @@ async function start() {
   logInfo('Iniciando aplicación…')
 
   try {
-    logInfo(
-      `Comprobando conexión a MySQL (${env.db.host}:${env.db.port}, base "${env.db.database}")…`,
-    )
-    await pingDatabaseWithRetry()
-    logInfo('MySQL: conexión correcta. El pool está listo para consultas.')
+    await connectDatabase()
   } catch (error) {
-    logError('MySQL: no fue posible conectar o consultar la base de datos.')
-    if (error?.code) {
-      logError(`Código: ${error.code}`)
-    }
+    logError('MySQL: no fue posible conectar.')
+    if (error?.code) logError(`Código: ${error.code}`)
     logError(`Detalle: ${error?.message || 'Error desconocido.'}`)
     logError(
-      'Revise DB_HOST, DB_PORT, DB_USER, DB_PASSWORD y DB_NAME en .env, y que los scripts de database/ estén ejecutados.',
+      'Railway: en el servicio backend usá Variable Reference desde MySQL (MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE, MYSQL_PUBLIC_URL). Mismo proyecto y entorno production.',
     )
     process.exit(1)
   }
+
+  const { app } = require('./app')
+  const { env } = require('./config/env')
 
   const server = app.listen(env.port, '0.0.0.0', () => {
     logInfo(`Servidor HTTP en escucha en el puerto ${env.port}`)
