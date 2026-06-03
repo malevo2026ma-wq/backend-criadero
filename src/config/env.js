@@ -29,7 +29,47 @@ function parseFrontendOrigins() {
     .filter(Boolean)
 }
 
+function parseMysqlUrl(raw) {
+  const url = String(raw ?? '').trim()
+  if (!url) return null
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'mysql:' && u.protocol !== 'mysql2:') return null
+    return {
+      host: u.hostname,
+      port: Number(u.port || 3306),
+      user: decodeURIComponent(u.username || 'root'),
+      password: decodeURIComponent(u.password || ''),
+      database: decodeURIComponent(u.pathname.replace(/^\//, '') || 'railway'),
+      sslEnabled:
+        u.searchParams.get('ssl') === 'true' ||
+        u.hostname.includes('railway') ||
+        u.hostname.includes('rlwy.net'),
+    }
+  } catch {
+    return null
+  }
+}
+
 function resolveDbConfig() {
+  const fromUrl =
+    parseMysqlUrl(process.env.MYSQL_URL) ||
+    parseMysqlUrl(process.env.MYSQL_PUBLIC_URL) ||
+    parseMysqlUrl(process.env.DATABASE_URL)
+
+  if (fromUrl) {
+    const sslOverride = process.env.DB_SSL
+    return {
+      ...fromUrl,
+      sslEnabled:
+        sslOverride === 'true' || sslOverride === '1'
+          ? true
+          : sslOverride === 'false' || sslOverride === '0'
+            ? false
+            : fromUrl.sslEnabled,
+    }
+  }
+
   const host =
     process.env.DB_HOST ||
     process.env.MYSQLHOST ||
@@ -59,6 +99,14 @@ function resolveDbConfig() {
   return { host, port, user, password, database, sslEnabled }
 }
 
+function hasDbCredentials(db) {
+  if (db.password) return true
+  const hasUrl = Boolean(
+    process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL || process.env.DATABASE_URL,
+  )
+  return hasUrl
+}
+
 function assertProductionConfig() {
   if (!isProduction) return
 
@@ -74,9 +122,9 @@ function assertProductionConfig() {
   }
 
   const db = resolveDbConfig()
-  if (!db.password) {
+  if (!hasDbCredentials(db)) {
     throw new Error(
-      'Configuración inválida: DB_PASSWORD (o MYSQLPASSWORD) es obligatorio en producción.',
+      'Configuración inválida: faltan credenciales MySQL. En Railway → servicio backend → Variables → "Add Variable Reference" y vinculá el servicio MySQL (MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE) o MYSQL_URL.',
     )
   }
 }
